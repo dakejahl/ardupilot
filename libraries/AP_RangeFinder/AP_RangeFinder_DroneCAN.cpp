@@ -114,9 +114,19 @@ void AP_RangeFinder_DroneCAN::handle_measurement(AP_DroneCAN *ap_dronecan, const
         return;
     }
     WITH_SEMAPHORE(driver->_sem);
+
+    // Non-finite range values (NaN / inf) must never reach _distance_m: downstream
+    // glitch detectors, LPFs and the > max / < min comparisons in
+    // AP_RangeFinder_Backend::update_status are not NaN-safe.
+    const bool range_finite = isfinite(msg.range);
+
     switch (msg.reading_type) {
         case UAVCAN_EQUIPMENT_RANGE_SENSOR_MEASUREMENT_READING_TYPE_VALID_RANGE:
         {
+            if (!range_finite) {
+                // publisher claimed VALID_RANGE but the payload is non-finite; drop the message
+                break;
+            }
             //update the states in backend instance
             driver->_distance_m = msg.range;
             driver->_last_reading_ms = AP_HAL::millis();
@@ -127,7 +137,9 @@ void AP_RangeFinder_DroneCAN::handle_measurement(AP_DroneCAN *ap_dronecan, const
         //Additional states supported by RFND message
         case UAVCAN_EQUIPMENT_RANGE_SENSOR_MEASUREMENT_READING_TYPE_TOO_CLOSE:
         {
-            driver->_distance_m = msg.range;
+            if (range_finite) {
+                driver->_distance_m = msg.range;
+            }
             driver->_last_reading_ms = AP_HAL::millis();
             driver->_status = RangeFinder::Status::OutOfRangeLow;
             driver->new_data = true;
@@ -135,7 +147,9 @@ void AP_RangeFinder_DroneCAN::handle_measurement(AP_DroneCAN *ap_dronecan, const
         }
         case UAVCAN_EQUIPMENT_RANGE_SENSOR_MEASUREMENT_READING_TYPE_TOO_FAR:
         {
-            driver->_distance_m = msg.range;
+            if (range_finite) {
+                driver->_distance_m = msg.range;
+            }
             driver->_last_reading_ms = AP_HAL::millis();
             driver->_status = RangeFinder::Status::OutOfRangeHigh;
             driver->new_data = true;

@@ -59,6 +59,12 @@ bool AP_RangeFinder_Backend::has_data() const {
 // update status based on distance measurement
 void AP_RangeFinder_Backend::update_status(RangeFinder::RangeFinder_State &state_arg) const
 {
+    // Reject non-finite measurements: NaN > max and NaN < min are both false, which would
+    // otherwise drop into the else branch and mark the reading Good.
+    if (!isfinite(state_arg.distance_m)) {
+        set_status(state_arg, RangeFinder::Status::NoData);
+        return;
+    }
     // check distance
     if (state_arg.distance_m > max_distance()) {
         set_status(state_arg, RangeFinder::Status::OutOfRangeHigh);
