@@ -448,7 +448,9 @@ bool GCS_MAVLINK::send_battery_status()
 #if AP_RANGEFINDER_ENABLED
 void GCS_MAVLINK::send_distance_sensor(const AP_RangeFinder_Backend *sensor, const uint8_t instance) const
 {
-    if (!sensor->has_data()) {
+    // MAVLink DISTANCE_SENSOR conveys an actual measurement; suppress OutOfRange readings so the
+    // GCS does not display sensor min / max (or NaN) as if they were a real distance.
+    if (sensor->status() != RangeFinder::Status::Good) {
         return;
     }
 
@@ -540,6 +542,9 @@ void GCS_MAVLINK::send_rangefinder() const
     }
     AP_RangeFinder_Backend *s = rangefinder->find_instance(ROTATION_PITCH_270);
     if (s == nullptr) {
+        return;
+    }
+    if (s->status() != RangeFinder::Status::Good) {
         return;
     }
     mavlink_msg_rangefinder_send(

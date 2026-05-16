@@ -109,10 +109,14 @@ void GCS_MAVLINK_Rover::send_rangefinder() const
     float voltage = 0;
     bool got_one = false;
 
-    // report smaller distance of all rangefinders
+    // report smaller distance of all rangefinders.  Skip non-Good sensors so an OutOfRangeLow
+    // backend publishing its min_distance can't outvote a Good backend reading farther away.
     for (uint8_t i=0; i<rover.rangefinder.num_sensors(); i++) {
         AP_RangeFinder_Backend *s = rover.rangefinder.get_backend(i);
         if (s == nullptr) {
+            continue;
+        }
+        if (s->status() != RangeFinder::Status::Good) {
             continue;
         }
         if (!got_one ||

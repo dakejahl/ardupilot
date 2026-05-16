@@ -693,9 +693,11 @@ uint32_t AP_Frsky_SPort_Passthrough::calc_attiandrng(void)
     uint32_t attiandrng = ((uint16_t)roundf((roll * RAD_TO_DEG * 100 + 18000) * 0.05f) & ATTIANDRNG_ROLL_LIMIT);
     // pitch from [-9000;9000] centidegrees to unsigned 0.2 degree increments [0;900] (just in case, limit to 1023 (0x3FF) since the value is stored on 10 bits)
     attiandrng |= ((uint16_t)roundf((pitch * RAD_TO_DEG * 100 + 9000) * 0.05f) & ATTIANDRNG_PITCH_LIMIT)<<ATTIANDRNG_PITCH_OFFSET;
-    // rangefinder measurement in cm
+    // rangefinder measurement in cm; only report it when the sensor reads Good so OutOfRange
+    // readings (which currently carry sensor min / max per DSDL) don't appear as a real distance.
 #if AP_RANGEFINDER_ENABLED
-    attiandrng |= prep_number(_rng ? _rng->distance_orient(ROTATION_PITCH_270)*100 : 0, 3, 1)<<ATTIANDRNG_RNGFND_OFFSET;
+    const bool rng_good = (_rng != nullptr) && (_rng->status_orient(ROTATION_PITCH_270) == RangeFinder::Status::Good);
+    attiandrng |= prep_number(rng_good ? _rng->distance_orient(ROTATION_PITCH_270)*100 : 0, 3, 1)<<ATTIANDRNG_RNGFND_OFFSET;
 #else
     attiandrng |= prep_number(0, 3, 1)<<ATTIANDRNG_RNGFND_OFFSET;
 #endif
