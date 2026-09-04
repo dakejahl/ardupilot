@@ -201,3 +201,6 @@ define HAL_OS_FATFS_IO 1
 # Setup for OSD
 define OSD_ENABLED 1
 define HAL_OSD_TYPE_DEFAULT 5 # MSP Displayport
+
+# QAUTOTUNE is compiled out of hardware Plane binaries unless a board opts in
+define QAUTOTUNE_ENABLED 1
