@@ -572,7 +572,8 @@ private:
     struct {
         int8_t debounce_position = -1;
         int8_t current_position = -1;
-        uint32_t last_edge_time_ms;
+        uint8_t debounce_frames;    // number of consecutive RC frames debounce_position has been seen in
+        uint32_t last_frame;        // RC_Channels receiver frame count when debounce_position was last seen
         bool initialised;
     } switch_state;
 
@@ -796,6 +797,7 @@ private:
     static RC_Channel *channels;
 
     uint32_t last_update_ms;
+    uint32_t receiver_frame_count; // number of new receiver frames processed by read_input()
     bool has_new_overrides;
     bool _has_had_rc_receiver; // true if we have had a direct detach RC receiver, does not include overrides
     bool _has_had_override; // true if we have had an override on any channel

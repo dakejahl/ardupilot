@@ -61,7 +61,9 @@ extern const AP_HAL::HAL& hal;
 #include <AP_Vehicle/AP_Vehicle_Type.h>
 #include <AP_Parachute/AP_Parachute_config.h>
 #include <AP_Scripting/AP_Scripting.h>
-#define SWITCH_DEBOUNCE_TIME_MS  200
+// number of consecutive RC input frames a new switch position must be
+// seen in before it is acted upon
+#define SWITCH_DEBOUNCE_FRAMES  3
 
 const AP_Param::GroupInfo RC_Channel::var_info[] = {
     // @Param: MIN
@@ -655,16 +657,24 @@ bool RC_Channel::debounce_completed(int8_t position)
         switch_state.debounce_position = position;
     } else {
         // switch change detected
-        const uint32_t tnow_ms = AP_HAL::millis();
+        const uint32_t frame = rc().receiver_frame_count;
+        // overrides arrive over a checksummed link at no fixed rate,
+        // so every read of an override counts towards the debounce
+        const bool overridden = has_override() && !rc().option_is_enabled(RC_Channels::Option::IGNORE_OVERRIDES);
 
         // position not established yet
         if (switch_state.debounce_position != position) {
             switch_state.debounce_position = position;
-            switch_state.last_edge_time_ms = tnow_ms;
-        } else if (tnow_ms - switch_state.last_edge_time_ms >= SWITCH_DEBOUNCE_TIME_MS) {
-            // position estabilished; debounce completed
-            switch_state.current_position = position;
-            return true;
+            switch_state.debounce_frames = 1;
+            switch_state.last_frame = frame;
+        } else if (overridden || frame != switch_state.last_frame) {
+            // position seen again in a new RC frame or override
+            switch_state.last_frame = frame;
+            if (++switch_state.debounce_frames >= SWITCH_DEBOUNCE_FRAMES) {
+                // position estabilished; debounce completed
+                switch_state.current_position = position;
+                return true;
+            }
         }
     }
 
