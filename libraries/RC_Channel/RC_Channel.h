@@ -566,19 +566,23 @@ private:
     float pwm_to_range_dz(uint16_t dead_zone) const;
 
     bool read_3pos_switch(AuxSwitchPos &ret) const WARN_IF_UNUSED;
-    bool read_6pos_switch(int8_t& position) WARN_IF_UNUSED;
+    bool read_6pos_switch(int8_t& position, uint32_t min_hold_ms = 0) WARN_IF_UNUSED;
 
     // Structure used to detect and debounce switch changes
     struct {
         int8_t debounce_position = -1;
         int8_t current_position = -1;
-        uint32_t last_edge_time_ms;
+        uint8_t debounce_frames;    // number of consecutive RC frames debounce_position has been seen in
+        uint32_t last_frame;        // RC_Channels receiver frame count when debounce_position was last seen
+        uint32_t last_edge_time_ms; // time debounce_position was first seen
         bool initialised;
     } switch_state;
 
     void reset_mode_switch();
     void read_mode_switch();
-    bool debounce_completed(int8_t position);
+    // returns true once position has been seen in SWITCH_DEBOUNCE_FRAMES
+    // consecutive frames and held for at least min_hold_ms
+    bool debounce_completed(int8_t position, uint32_t min_hold_ms = 0);
     // returns true if the first time we successfully read the
     // channel's three-position-switch position we should record that
     // position as the current position *without* executing the
@@ -796,6 +800,7 @@ private:
     static RC_Channel *channels;
 
     uint32_t last_update_ms;
+    uint32_t receiver_frame_count; // number of new receiver frames processed by read_input()
     bool has_new_overrides;
     bool _has_had_rc_receiver; // true if we have had a direct detach RC receiver, does not include overrides
     bool _has_had_override; // true if we have had an override on any channel
