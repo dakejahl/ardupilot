@@ -15095,6 +15095,45 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         self.wait_current_waypoint(0, timeout=10)
         self.set_rc(7, 1000)
 
+    def MotorEStopLatency(self):
+        '''check an RC emergency stop switch stops the motors within a few RC frames'''
+        self.set_parameters({
+            "RC9_OPTION": 31,  # MOTOR_ESTOP
+            "DISARM_DELAY": 0,
+        })
+        self.set_rc(9, 1000)
+        self.set_message_rate_hz('RC_CHANNELS', 50)
+        self.set_message_rate_hz('SERVO_OUTPUT_RAW', 50)
+        self.change_mode('STABILIZE')
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.wait_servo_channel_in_range(1, 1050, 2000, timeout=10)
+
+        self.set_rc(9, 2000, timeout=None)
+        switch_seen_ms = None
+        tstart = self.get_sim_time()
+        while True:
+            if self.get_sim_time_cached() - tstart > 5:
+                raise NotAchievedException("Motors did not stop")
+            m = self.mav.recv_match(type=['RC_CHANNELS', 'SERVO_OUTPUT_RAW'], blocking=True, timeout=1)
+            if m is None:
+                continue
+            if m.get_type() == 'RC_CHANNELS':
+                if switch_seen_ms is None and m.chan9_raw == 2000:
+                    switch_seen_ms = m.time_boot_ms
+                continue
+            if switch_seen_ms is not None and m.servo1_raw <= 1000:
+                break
+        latency_ms = m.time_usec * 1e-3 - switch_seen_ms
+        self.progress("Motors stopped %.0fms after switch change seen" % latency_ms)
+        # expect three 50Hz RC frames, plus up to a frame each of
+        # message stream jitter
+        if latency_ms > 100:
+            raise NotAchievedException("Motors took %.0fms to stop" % latency_ms)
+
+        self.set_rc(9, 1000)
+        self.disarm_vehicle()
+
     def AuxFunctionsInMission(self):
         '''Test use of auxiliary functions in missions'''
         self.load_mission("aux_functions.txt")
@@ -19568,6 +19607,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             self.MAV_CMD_CONDITION_YAW,
             self.SetModesViaAuxSwitch,
             self.AuxSwitchOptions,
+            self.MotorEStopLatency,
             self.BrakeMode,
             self.ThrottleFailsafePassthrough,
             self.ThrottleFailsafeValue,
