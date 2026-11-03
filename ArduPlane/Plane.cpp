@@ -134,7 +134,7 @@ const AP_Scheduler::Task Plane::scheduler_tasks[] = {
 #if HAL_ADSB_ENABLED || AP_ADSB_AVOIDANCE_ENABLED
     SCHED_TASK(avoidance_adsb_update,  10,    100, 144),
 #endif  // HAL_ADSB_ENABLED || AP_ADSB_AVOIDANCE_ENABLED
-    SCHED_TASK_CLASS(RC_Channels,       (RC_Channels*)&plane.g2.rc_channels, read_aux_all,           10,    200, 147),
+    SCHED_TASK_CLASS(RC_Channels,       (RC_Channels*)&plane.g2.rc_channels, read_aux_all,           50,    200, 147),
 #if HAL_BUTTON_ENABLED
     SCHED_TASK_CLASS(AP_Button, &plane.button, update, 5, 100, 150),
 #endif

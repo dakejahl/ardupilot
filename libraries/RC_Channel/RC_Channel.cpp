@@ -61,7 +61,13 @@ extern const AP_HAL::HAL& hal;
 #include <AP_Vehicle/AP_Vehicle_Type.h>
 #include <AP_Parachute/AP_Parachute_config.h>
 #include <AP_Scripting/AP_Scripting.h>
-#define SWITCH_DEBOUNCE_TIME_MS  200
+// number of consecutive RC input frames a new switch position must be
+// seen in before it is acted upon
+#define SWITCH_DEBOUNCE_FRAMES  3
+// every flight mode switch position selects a mode, so the position must
+// also be held for this long to avoid entering the modes of positions
+// passed through while the switch is moved
+#define MODE_SWITCH_DEBOUNCE_TIME_MS  200
 
 const AP_Param::GroupInfo RC_Channel::var_info[] = {
     // @Param: MIN
@@ -609,7 +615,7 @@ void RC_Channel::reset_mode_switch()
 }
 
 // read a 6 position switch
-bool RC_Channel::read_6pos_switch(int8_t& position)
+bool RC_Channel::read_6pos_switch(int8_t& position, uint32_t min_hold_ms)
 {
     // calculate position of 6 pos switch
     const uint16_t pulsewidth = get_radio_in();
@@ -631,7 +637,7 @@ bool RC_Channel::read_6pos_switch(int8_t& position)
         position = 5;
     }
 
-    if (!debounce_completed(position)) {
+    if (!debounce_completed(position, min_hold_ms)) {
         return false;
     }
 
@@ -641,13 +647,13 @@ bool RC_Channel::read_6pos_switch(int8_t& position)
 void RC_Channel::read_mode_switch()
 {
     int8_t position;
-    if (read_6pos_switch(position)) {
+    if (read_6pos_switch(position, MODE_SWITCH_DEBOUNCE_TIME_MS)) {
         // set flight mode and simple mode setting
         mode_switch_changed(modeswitch_pos_t(position));
     }
 }
 
-bool RC_Channel::debounce_completed(int8_t position)
+bool RC_Channel::debounce_completed(int8_t position, uint32_t min_hold_ms)
 {
     // switch change not detected
     if (switch_state.current_position == position) {
@@ -655,16 +661,30 @@ bool RC_Channel::debounce_completed(int8_t position)
         switch_state.debounce_position = position;
     } else {
         // switch change detected
+        const uint32_t frame = rc().receiver_frame_count;
         const uint32_t tnow_ms = AP_HAL::millis();
+        // overrides arrive over a checksummed link at no fixed rate,
+        // so every read of an override counts towards the debounce
+        const bool overridden = has_override() && !rc().option_is_enabled(RC_Channels::Option::IGNORE_OVERRIDES);
 
         // position not established yet
         if (switch_state.debounce_position != position) {
             switch_state.debounce_position = position;
+            switch_state.debounce_frames = 1;
+            switch_state.last_frame = frame;
             switch_state.last_edge_time_ms = tnow_ms;
-        } else if (tnow_ms - switch_state.last_edge_time_ms >= SWITCH_DEBOUNCE_TIME_MS) {
-            // position estabilished; debounce completed
-            switch_state.current_position = position;
-            return true;
+        } else if (overridden || frame != switch_state.last_frame) {
+            // position seen again in a new RC frame or override
+            switch_state.last_frame = frame;
+            if (switch_state.debounce_frames < SWITCH_DEBOUNCE_FRAMES) {
+                switch_state.debounce_frames++;
+            }
+            if (switch_state.debounce_frames >= SWITCH_DEBOUNCE_FRAMES &&
+                tnow_ms - switch_state.last_edge_time_ms >= min_hold_ms) {
+                // position estabilished; debounce completed
+                switch_state.current_position = position;
+                return true;
+            }
         }
     }
 

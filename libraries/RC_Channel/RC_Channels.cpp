@@ -91,6 +91,7 @@ bool RC_Channels::read_input(void)
     if (hal.rcin->new_input() &&
         !rc().option_is_enabled(RC_Channels::Option::IGNORE_RECEIVER)) {
         _has_had_rc_receiver = true;
+        receiver_frame_count++;
     } else if (!has_new_overrides) {
         return false;
     }
