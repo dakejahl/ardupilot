@@ -24,6 +24,7 @@
 #include "Semaphores.h"
 #include "Scheduler.h"
 #include "Device.h"
+#include <AP_HAL/SPITrace.h>
 
 #ifndef HAL_SPI_SCK_SAVE_RESTORE
 #define HAL_SPI_SCK_SAVE_RESTORE !defined(STM32F1)
@@ -185,6 +186,9 @@ private:
     uint32_t freq_flag_high;
     char *pname;
     bool cs_forced;
+#if HAL_OSD_SPI_TRACE_ENABLED
+    AP_HAL::SPITrace *trace;
+#endif
     static void *spi_thread(void *arg);
     static uint32_t derive_freq_flag_bus(uint8_t busid, uint32_t _frequency);
     uint32_t derive_freq_flag(uint32_t _frequency);

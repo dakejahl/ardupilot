@@ -123,6 +123,10 @@ SPIDevice::SPIDevice(SPIBus &_bus, SPIDesc &_device_desc)
 
     set_speed(AP_HAL::Device::SPEED_LOW);
 
+#if HAL_OSD_SPI_TRACE_ENABLED
+    trace = strcmp(device_desc.name, "osd") == 0 ? AP_HAL::SPITrace::get_singleton() : nullptr;
+#endif
+
     asprintf(&pname, "SPI:%s:%u:%u",
              device_desc.name,
              (unsigned)bus.bus, (unsigned)device_desc.device);
@@ -201,6 +205,13 @@ bool SPIDevice::do_transfer(const uint8_t *send, uint8_t *recv, uint32_t len)
         return false;
     }
 
+#if HAL_OSD_SPI_TRACE_ENABLED
+    // transfer() and read_registers() pass send == recv, so MOSI must be copied before the exchange
+    if (trace != nullptr) {
+        trace->segment_tx(send, len);
+    }
+#endif
+
     bool ret = true;
 
 #if defined(HAL_SPI_USE_POLLED)
@@ -212,6 +223,11 @@ bool SPIDevice::do_transfer(const uint8_t *send, uint8_t *recv, uint32_t len)
     }
 #else
     if (!bus.bouncebuffer_setup(send, len, recv, len)) {
+#if HAL_OSD_SPI_TRACE_ENABLED
+        if (trace != nullptr) {
+            trace->segment_rx(nullptr, len, false);
+        }
+#endif
         set_chip_select(old_cs_forced);
         return false;
     }
@@ -239,6 +255,11 @@ bool SPIDevice::do_transfer(const uint8_t *send, uint8_t *recv, uint32_t len)
         spiAbort(spi_devices[device_desc.bus].driver);
     }
     bus.bouncebuffer_finish(send, recv, len);
+#endif
+#if HAL_OSD_SPI_TRACE_ENABLED
+    if (trace != nullptr) {
+        trace->segment_rx(recv, len, ret);
+    }
 #endif
     set_chip_select(old_cs_forced);
     return ret;
@@ -268,6 +289,11 @@ bool SPIDevice::clock_pulse(uint32_t n)
         if (!bus.semaphore.check_owner()) {
             return false;
         }
+#if HAL_OSD_SPI_TRACE_ENABLED
+        if (trace != nullptr) {
+            trace->segment_tx(nullptr, n);
+        }
+#endif
         osalSysLock();
         spiStartIgnoreI(spi_devices[device_desc.bus].driver, n);
         msg = osalThreadSuspendTimeoutS(&spi_devices[device_desc.bus].driver->thread, TIME_US2I(timeout_us));
@@ -275,6 +301,11 @@ bool SPIDevice::clock_pulse(uint32_t n)
         if (msg == MSG_TIMEOUT) {
             spiAbort(spi_devices[device_desc.bus].driver);
         }
+#if HAL_OSD_SPI_TRACE_ENABLED
+        if (trace != nullptr) {
+            trace->segment_rx(nullptr, n, msg != MSG_TIMEOUT);
+        }
+#endif
     }
     return msg != MSG_TIMEOUT;
 }
@@ -475,6 +506,11 @@ bool SPIDevice::acquire_bus(bool set, bool skip_cs)
     if (!set && cs_forced) {
         if(!skip_cs) {
             spiUnselectI(spi_devices[device_desc.bus].driver);          /* Slave Select de-assertion.       */
+#if HAL_OSD_SPI_TRACE_ENABLED
+            if (trace != nullptr) {
+                trace->cs_released();
+            }
+#endif
         }
         spiReleaseBus(spi_devices[device_desc.bus].driver);              /* Ownership release.               */
         cs_forced = false;
@@ -503,6 +539,11 @@ bool SPIDevice::acquire_bus(bool set, bool skip_cs)
         bus.stop_peripheral();
         bus.start_peripheral();
         if(!skip_cs) {
+#if HAL_OSD_SPI_TRACE_ENABLED
+            if (trace != nullptr) {
+                trace->cs_asserted();
+            }
+#endif
             spiSelectI(spi_devices[device_desc.bus].driver);                /* Slave Select assertion.          */
         }
         cs_forced = true;
